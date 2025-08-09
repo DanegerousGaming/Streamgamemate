@@ -51,7 +51,10 @@ app.get('/auth/steam/return',
         res.redirect(`${FRONTEND_URL}?steamid=${req.user.id}`);
     }
 );
-
+// --- ROOT WELCOME ROUTE ---
+app.get('/', (req, res) => {
+    res.send('Steam Game Finder Backend is running!');
+});
 // --- API PROXY ROUTES ---
 app.get('/api/user', async (req, res) => {
     const { steamid } = req.query;
@@ -134,3 +137,4 @@ app.get('/api/shared-games', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Server listening on port ${PORT}`);
 });
+
