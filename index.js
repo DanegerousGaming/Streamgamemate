@@ -13,7 +13,20 @@ const STEAM_API_KEY = process.env.STEAM_API_KEY;
 const VERCEL_URL = process.env.VERCEL_URL; // Your Vercel deployment URL
 const FRONTEND_URL = process.env.FRONTEND_URL; // The URL of your frontend app
 
-app.use(cors({ origin: FRONTEND_URL, credentials: true }));
+const allowedOrigins = [FRONTEND_URL, 'http://localhost:3000'];
+
+app.use(cors({
+    origin: function (origin, callback) {
+        // allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.indexOf(origin) === -1) {
+            const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+            return callback(new Error(msg), false);
+        }
+        return callback(null, true);
+    },
+    credentials: true
+}));
 
 app.use(session({
     secret: 'your secret key', // Replace with a random secret
@@ -137,5 +150,6 @@ app.get('/api/shared-games', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Server listening on port ${PORT}`);
 });
+
 
 
