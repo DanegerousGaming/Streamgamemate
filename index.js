@@ -17,6 +17,7 @@ const FRONTEND_URL = process.env.FRONTEND_URL; // The URL of your frontend app
 // --- CORS Configuration ---
 app.use(cors({
     origin: function (origin, callback) {
+        // This is the corrected list of allowed origins
         const allowedOrigins = [
             'https://danegerousgaming.github.io', 
             'http://localhost:3000'
@@ -153,6 +154,7 @@ app.get('/api/shared-games', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Server listening on port ${PORT}`);
 });
+
 
 
 
