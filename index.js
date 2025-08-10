@@ -13,7 +13,6 @@ const STEAM_API_KEY = process.env.STEAM_API_KEY;
 const VERCEL_URL = process.env.VERCEL_URL; // Your Vercel deployment URL
 const FRONTEND_URL = process.env.FRONTEND_URL; // The URL of your frontend app
 
-const allowedOrigins = [FRONTEND_URL, 'http://localhost:3000'];
 
 app.use(cors({
     origin: function (origin, callback) {
@@ -150,6 +149,7 @@ app.get('/api/shared-games', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Server listening on port ${PORT}`);
 });
+
 
 
 
