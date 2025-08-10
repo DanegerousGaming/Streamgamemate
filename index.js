@@ -14,15 +14,19 @@ const VERCEL_URL = process.env.VERCEL_URL; // Your Vercel deployment URL
 const FRONTEND_URL = process.env.FRONTEND_URL; // The URL of your frontend app
 
 
+// --- CORS Configuration ---
 app.use(cors({
     origin: function (origin, callback) {
-        // allow requests with no origin (like mobile apps or curl requests)
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.indexOf(origin) === -1) {
-            const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-            return callback(new Error(msg), false);
+        const allowedOrigins = [
+            'https://danegerousgaming.github.io', 
+            'http://localhost:3000'
+        ];
+
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
         }
-        return callback(null, true);
     },
     credentials: true
 }));
@@ -149,6 +153,7 @@ app.get('/api/shared-games', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Server listening on port ${PORT}`);
 });
+
 
 
 
