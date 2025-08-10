@@ -33,10 +33,10 @@ passport.deserializeUser((obj, done) => {
 });
 
 passport.use(new SteamStrategy({
-    returnURL: `${VERCEL_URL}/auth/steam/return`,
-    realm: VERCEL_URL,
-    apiKey: STEAM_API_KEY
-}, (identifier, profile, done) => {
+    returnURL: 'https://' + process.env.VERCEL_URL + '/auth/steam/return',
+    realm: 'https://' + process.env.VERCEL_URL,
+    apiKey: process.env.STEAM_API_KEY
+}, (identifier, profile, done) => { // The callback function is now correctly placed inside
     profile.identifier = identifier;
     return done(null, profile);
 }));
@@ -137,4 +137,5 @@ app.get('/api/shared-games', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Server listening on port ${PORT}`);
 });
+
 
