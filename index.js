@@ -104,9 +104,9 @@ app.get('/api/friends', async (req, res) => {
     }
 });
 
-// --- UPDATED ENDPOINT FOR PARTIAL MATCHES & PLAYTIME ---
+// --- UPDATED ENDPOINT FOR CURRENCY ---
 app.get('/api/shared-games', async (req, res) => {
-    const { steamids } = req.query;
+    const { steamids, cc } = req.query; // cc is the new currency country code
     if (!steamids) return res.status(400).json({ error: 'SteamIDs are required' });
 
     const ids = steamids.split(',');
@@ -145,7 +145,8 @@ app.get('/api/shared-games', async (req, res) => {
 
         const gameDetailsPromises = partiallyMatchedGames.slice(0, 30).map(async (game) => {
             try {
-                const detailsRes = await axios.get(`https://store.steampowered.com/api/appdetails?appids=${game.appid}`);
+                // Add the 'cc' parameter to the Steam store API call
+                const detailsRes = await axios.get(`https://store.steampowered.com/api/appdetails?appids=${game.appid}&cc=${cc || 'au'}`);
                 const details = detailsRes.data[game.appid];
 
                 if (details && details.success) {
