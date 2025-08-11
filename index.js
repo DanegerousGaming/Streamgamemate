@@ -15,16 +15,12 @@ const FRONTEND_URL = process.env.FRONTEND_URL;
 // --- CORS Configuration ---
 app.use(cors({
     origin: function (origin, callback) {
-        // Log the incoming request origin for debugging
         console.log('INCOMING REQUEST ORIGIN:', origin);
-
         const allowedOrigins = [
             'https://danegerousgaming.github.io',
             'http://localhost:3000'
         ];
-
-        // Check if the origin is in our allowed list
-        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+        if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
             callback(new Error('Not allowed by CORS'));
@@ -35,7 +31,7 @@ app.use(cors({
 
 
 app.use(session({
-    secret: 'your super secret key', // Replace with a random secret
+    secret: 'your super secret key',
     resave: false,
     saveUninitialized: true,
 }));
@@ -91,12 +87,9 @@ app.get('/api/friends', async (req, res) => {
     if (!steamid) return res.status(400).json({ error: 'SteamID is required' });
     try {
         const friendListResponse = await axios.get(`http://api.steampowered.com/ISteamUser/GetFriendList/v0001/?key=${STEAM_API_KEY}&steamid=${steamid}&relationship=friend`);
-        
-        // **FIX**: Check if the friends list is available and not empty
         if (!friendListResponse.data.friendslist || friendListResponse.data.friendslist.friends.length === 0) {
             return res.json({ friendslist: { friends: [] } });
         }
-
         const friendIds = friendListResponse.data.friendslist.friends.map(f => f.steamid).join(',');
         const friendSummariesResponse = await axios.get(`http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=${STEAM_API_KEY}&steamids=${friendIds}`);
         const friendsWithDetails = friendSummariesResponse.data.response.players.map(player => ({
@@ -107,23 +100,22 @@ app.get('/api/friends', async (req, res) => {
         res.json({ friendslist: { friends: friendsWithDetails } });
     } catch (error) {
         console.error('Error fetching friends list:', error.message);
-        // Return an empty list on error to prevent frontend crash
         res.status(500).json({ friendslist: { friends: [] } });
     }
 });
 
-// --- UPDATED ENDPOINT FOR PARTIAL MATCHES ---
+// --- UPDATED ENDPOINT FOR PARTIAL MATCHES & PLAYTIME ---
 app.get('/api/shared-games', async (req, res) => {
     const { steamids } = req.query;
     if (!steamids) return res.status(400).json({ error: 'SteamIDs are required' });
 
     const ids = steamids.split(',');
     const totalPlayers = ids.length;
-    const ownershipThreshold = 0.8; // 80%
+    const ownershipThreshold = 0.8;
 
     try {
         const allGamesPromises = ids.map(id =>
-            axios.get(`http://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${STEAM_API_KEY}&steamid=${id}&format=json`)
+            axios.get(`http://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${STEAM_API_KEY}&steamid=${id}&format=json&include_played_free_games=1`)
         );
         const responses = await Promise.all(allGamesPromises);
 
@@ -133,18 +125,19 @@ app.get('/api/shared-games', async (req, res) => {
                 const steamID = ids[index];
                 response.data.response.games.forEach(game => {
                     if (!gameOwnershipMap.has(game.appid)) {
-                        gameOwnershipMap.set(game.appid, []);
+                        gameOwnershipMap.set(game.appid, { owners: [], playtimes: {} });
                     }
-                    gameOwnershipMap.get(game.appid).push(steamID);
+                    gameOwnershipMap.get(game.appid).owners.push(steamID);
+                    gameOwnershipMap.get(game.appid).playtimes[steamID] = game.playtime_forever;
                 });
             }
         });
 
         const partiallyMatchedGames = [];
-        for (const [appid, owners] of gameOwnershipMap.entries()) {
-            const ownershipRatio = owners.length / totalPlayers;
+        for (const [appid, data] of gameOwnershipMap.entries()) {
+            const ownershipRatio = data.owners.length / totalPlayers;
             if (ownershipRatio >= ownershipThreshold) {
-                partiallyMatchedGames.push({ appid, owners });
+                partiallyMatchedGames.push({ appid, ...data });
             }
         }
 
@@ -163,12 +156,13 @@ app.get('/api/shared-games', async (req, res) => {
                         ...details.data,
                         player_count: playersRes.data.response.player_count || 0,
                         owners: game.owners,
-                        nonOwners: nonOwners
+                        nonOwners: nonOwners,
+                        playtimes: game.playtimes
                     };
                 }
                 return null;
             } catch (e) {
-                return null; 
+                return null;
             }
         });
 
