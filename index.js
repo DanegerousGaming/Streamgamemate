@@ -118,13 +118,12 @@ app.get('/api/friends', async (req, res) => {
 });
 
 
-// --- REWRITTEN ENDPOINT FOR STABILITY AND ACCURACY ---
+// --- FUNDAMENTALLY CORRECTED ENDPOINT ---
 app.get('/api/shared-games', async (req, res) => {
     const { steamids, cc, threshold } = req.query;
     if (!steamids) return res.status(400).json({ error: 'SteamIDs are required' });
 
     const ids = steamids.split(',');
-    const totalPlayers = ids.length;
     const ownershipThreshold = parseFloat(threshold) || 0.8;
 
     try {
@@ -136,10 +135,13 @@ app.get('/api/shared-games', async (req, res) => {
         // Use Promise.allSettled to ensure all promises complete, even if some fail (e.g., private profiles)
         const results = await Promise.allSettled(allGamesPromises);
 
+        let successfulFetches = 0;
         const gameOwnershipMap = new Map();
+
         results.forEach((result, index) => {
-            // Only process promises that were fulfilled
+            // Only process promises that were fulfilled and contain game data
             if (result.status === 'fulfilled' && result.value.data.response && result.value.data.response.games) {
+                successfulFetches++; // Count successfully retrieved libraries
                 const steamID = ids[index];
                 result.value.data.response.games.forEach(game => {
                     if (!gameOwnershipMap.has(game.appid)) {
@@ -154,9 +156,15 @@ app.get('/api/shared-games', async (req, res) => {
             }
         });
 
+        // If no user libraries could be fetched, return empty
+        if (successfulFetches === 0) {
+            return res.json({ games: [] });
+        }
+
         const partiallyMatchedGames = [];
         for (const [appid, data] of gameOwnershipMap.entries()) {
-            const ownershipRatio = data.owners.length / totalPlayers;
+            // **THE CORE FIX**: The denominator is now the number of *successfully fetched* profiles, not the total selected.
+            const ownershipRatio = data.owners.length / successfulFetches; 
             if (ownershipRatio >= ownershipThreshold) {
                 partiallyMatchedGames.push({ appid, ...data });
             }
