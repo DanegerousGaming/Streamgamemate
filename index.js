@@ -9,18 +9,14 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // --- CONFIGURATION ---
-// It's crucial that these environment variables are set in your hosting environment (e.g., Vercel, Heroku).
 const STEAM_API_KEY = process.env.STEAM_API_KEY;
 const FRONTEND_URL = process.env.FRONTEND_URL;
 const SESSION_SECRET = process.env.SESSION_SECRET || 'a default secret for local development';
 
 // --- MIDDLEWARE SETUP ---
 
-// CORS Configuration: Allows the frontend to make requests to this backend.
 app.use(cors({
     origin: function (origin, callback) {
-        // In a real production environment, you would be more strict.
-        // For this project, we allow known frontend URLs and tools like Postman (no origin).
         const allowedOrigins = [FRONTEND_URL, 'https://danegerousgaming.github.io', 'http://localhost:3000'];
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
@@ -32,25 +28,22 @@ app.use(cors({
     credentials: true
 }));
 
-// Session Management: Required for Passport.js to maintain login sessions.
 app.use(session({
     secret: SESSION_SECRET,
     resave: false,
-    saveUninitialized: false, // Set to false for better practice
+    saveUninitialized: false,
     cookie: {
-        secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+        secure: process.env.NODE_ENV === 'production',
         httpOnly: true,
         maxAge: 1000 * 60 * 60 * 24 // 24 hours
     }
 }));
 
-// Passport Initialization: Sets up the authentication middleware.
 app.use(passport.initialize());
 app.use(passport.session());
 
 // --- PASSPORT STEAM STRATEGY ---
 
-// Defines how user data is stored in and retrieved from the session.
 passport.serializeUser((user, done) => {
     done(null, user);
 });
@@ -59,15 +52,20 @@ passport.deserializeUser((obj, done) => {
     done(null, obj);
 });
 
-// Configures the Steam authentication strategy.
+// --- CORE FIX: Determine the correct base URL for production and local environments ---
+const isProduction = !!process.env.VERCEL_URL;
+// Vercel provides the domain without the protocol. We must add it.
+const baseUrl = isProduction ? `https://${process.env.VERCEL_URL}` : `http://localhost:${PORT}`;
+
 passport.use(new SteamStrategy({
-    returnURL: `${process.env.VERCEL_URL || 'http://localhost:' + PORT}/auth/steam/return`,
-    realm: `${process.env.VERCEL_URL || 'http://localhost:' + PORT}`,
+    // Use the correctly constructed baseUrl
+    returnURL: `${baseUrl}/auth/steam/return`,
+    realm: baseUrl,
     apiKey: STEAM_API_KEY
 }, (identifier, profile, done) => {
-    // The 'profile' object contains the user's public Steam information.
     return done(null, profile);
 }));
+
 
 // --- AUTHENTICATION ROUTES ---
 
@@ -76,19 +74,12 @@ app.get('/auth/steam', passport.authenticate('steam'));
 app.get('/auth/steam/return',
     passport.authenticate('steam', { failureRedirect: '/' }),
     (req, res) => {
-        // On successful authentication, redirect the user back to the frontend,
-        // passing their SteamID as a URL parameter.
         res.redirect(`${FRONTEND_URL}?steamid=${req.user.id}`);
     }
 );
 
 // --- API ROUTES ---
 
-/**
- * @route GET /api/user
- * @desc Fetches public profile information for a given SteamID.
- * @access Public
- */
 app.get('/api/user', async (req, res) => {
     const { steamid } = req.query;
     if (!steamid) {
@@ -104,11 +95,6 @@ app.get('/api/user', async (req, res) => {
     }
 });
 
-/**
- * @route GET /api/friends
- * @desc Fetches the friends list and their public profiles for a given SteamID.
- * @access Public
- */
 app.get('/api/friends', async (req, res) => {
     const { steamid } = req.query;
     if (!steamid) {
@@ -139,11 +125,6 @@ app.get('/api/friends', async (req, res) => {
     }
 });
 
-/**
- * @route GET /api/shared-games
- * @desc The core logic. Finds shared games among a list of users, handling private profiles gracefully.
- * @access Public
- */
 app.get('/api/shared-games', async (req, res) => {
     const { steamids, cc = 'us', threshold = '0.8' } = req.query;
     if (!steamids) {
