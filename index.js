@@ -125,6 +125,9 @@ app.get('/api/friends', async (req, res) => {
     }
 });
 
+// A helper function to introduce a delay.
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
 app.get('/api/shared-games', async (req, res) => {
     const { steamids, cc = 'us', threshold = '0.8' } = req.query;
     if (!steamids) {
@@ -135,31 +138,33 @@ app.get('/api/shared-games', async (req, res) => {
     const ownershipThreshold = parseFloat(threshold);
 
     try {
-        const gamePromises = ids.map(id =>
-            axios.get(`http://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${STEAM_API_KEY}&steamid=${id}&format=json&include_played_free_games=1&include_appinfo=1`)
-        );
-
-        const results = await Promise.allSettled(gamePromises);
-
         const gameOwnershipMap = new Map();
         let publicProfilesCount = 0;
 
-        results.forEach((result, index) => {
-            if (result.status === 'fulfilled' && result.value.data.response.games) {
-                publicProfilesCount++;
-                const steamID = ids[index];
-                result.value.data.response.games.forEach(game => {
-                    if (!gameOwnershipMap.has(game.appid)) {
-                        gameOwnershipMap.set(game.appid, { owners: [], playtimes: {} });
-                    }
-                    const entry = gameOwnershipMap.get(game.appid);
-                    entry.owners.push(steamID);
-                    entry.playtimes[steamID] = game.playtime_forever;
-                });
-            } else {
-                console.warn(`Failed to fetch games for SteamID: ${ids[index]}. Profile is likely private.`);
+        // --- CORE FIX: Process requests sequentially with a delay to avoid rate limiting ---
+        for (const id of ids) {
+            try {
+                const url = `http://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${STEAM_API_KEY}&steamid=${id}&format=json&include_played_free_games=1&include_appinfo=1`;
+                const response = await axios.get(url);
+
+                if (response.data.response && response.data.response.games) {
+                    publicProfilesCount++;
+                    response.data.response.games.forEach(game => {
+                        if (!gameOwnershipMap.has(game.appid)) {
+                            gameOwnershipMap.set(game.appid, { owners: [], playtimes: {} });
+                        }
+                        const entry = gameOwnershipMap.get(game.appid);
+                        entry.owners.push(id);
+                        entry.playtimes[id] = game.playtime_forever;
+                    });
+                }
+            } catch (error) {
+                 console.warn(`Could not fetch games for SteamID: ${id}. Profile is likely private or API failed.`);
             }
-        });
+            // Add a small delay between each request to be respectful to the Steam API
+            await delay(200); // 200ms delay
+        }
+
 
         if (publicProfilesCount === 0) {
             return res.json({ games: [], publicProfilesScanned: 0, totalProfilesRequested: ids.length });
