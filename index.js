@@ -104,7 +104,6 @@ app.get('/api/friends', async (req, res) => {
     }
 });
 
-// --- UPDATED ENDPOINT FOR ADJUSTABLE THRESHOLD ---
 app.get('/api/shared-games', async (req, res) => {
     const { steamids, cc, threshold } = req.query;
     if (!steamids) return res.status(400).json({ error: 'SteamIDs are required' });
@@ -114,7 +113,6 @@ app.get('/api/shared-games', async (req, res) => {
     const ownershipThreshold = parseFloat(threshold) || 0.8;
 
     try {
-        // This part remains the same
         const allGamesPromises = ids.map(id =>
             axios.get(`http://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${STEAM_API_KEY}&steamid=${id}&format=json&include_played_free_games=1`)
         );
@@ -144,7 +142,8 @@ app.get('/api/shared-games', async (req, res) => {
 
         partiallyMatchedGames.sort((a, b) => b.owners.length - a.owners.length || a.appid - b.appid);
 
-        const gameDetailsPromises = partiallyMatchedGames.slice(0, 30).map(async (game) => {
+        // **FIX**: Increased limit from 30 to 150
+        const gameDetailsPromises = partiallyMatchedGames.slice(0, 150).map(async (game) => {
             try {
                 const detailsRes = await axios.get(`https://store.steampowered.com/api/appdetails?appids=${game.appid}&cc=${cc || 'au'}`);
                 const details = detailsRes.data[game.appid];
@@ -177,7 +176,6 @@ app.get('/api/shared-games', async (req, res) => {
     }
 });
 
-// --- NEW ENDPOINT FOR MANUAL GAME SEARCH ---
 app.get('/api/search-game', async (req, res) => {
     const { query, steamids, cc } = req.query;
     if (!query || !steamids) return res.status(400).json({ error: 'Query and SteamIDs are required' });
@@ -185,18 +183,15 @@ app.get('/api/search-game', async (req, res) => {
     const ids = steamids.split(',');
 
     try {
-        // This is a workaround as Steam doesn't have a direct name search API.
-        // We'll search a public list of all Steam apps.
         const appListRes = await axios.get('https://api.steampowered.com/ISteamApps/GetAppList/v2/');
         const potentialApps = appListRes.data.applist.apps.filter(app => 
             app.name.toLowerCase().includes(query.toLowerCase())
-        ).slice(0, 5); // Limit to 5 potential matches to avoid long loads
+        ).slice(0, 20); // **FIX**: Increased search result limit from 5 to 20
 
         if (potentialApps.length === 0) {
             return res.json({ games: [] });
         }
 
-        // Fetch ownership for all users for these specific games
         const allGamesPromises = ids.map(id =>
             axios.get(`http://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${STEAM_API_KEY}&steamid=${id}&format=json&include_played_free_games=1`)
         );
