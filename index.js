@@ -198,9 +198,8 @@ app.get('/api/search-game', async (req, res) => {
         );
         const userLibraries = await Promise.all(allGamesPromises);
         
-        // **FIX**: Handle cases where a user's library is private/empty
         const userGamesSets = userLibraries.map(lib => 
-            new Set((lib.data.response.games || []).map(g => g.appid))
+            new Set((lib.data.response && lib.data.response.games || []).map(g => g.appid))
         );
 
         const gameDetailsPromises = potentialApps.map(async (app) => {
@@ -219,7 +218,6 @@ app.get('/api/search-game', async (req, res) => {
                         player_count: playersRes.data.response.player_count || 0,
                         owners,
                         nonOwners,
-                        // Search doesn't have playtime, so we create an empty object
                         playtimes: {} 
                     };
                 }
