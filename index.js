@@ -104,16 +104,17 @@ app.get('/api/friends', async (req, res) => {
     }
 });
 
-// --- UPDATED ENDPOINT FOR CURRENCY ---
+// --- UPDATED ENDPOINT FOR ADJUSTABLE THRESHOLD ---
 app.get('/api/shared-games', async (req, res) => {
-    const { steamids, cc } = req.query; // cc is the new currency country code
+    const { steamids, cc, threshold } = req.query;
     if (!steamids) return res.status(400).json({ error: 'SteamIDs are required' });
 
     const ids = steamids.split(',');
     const totalPlayers = ids.length;
-    const ownershipThreshold = 0.8;
+    const ownershipThreshold = parseFloat(threshold) || 0.8;
 
     try {
+        // This part remains the same
         const allGamesPromises = ids.map(id =>
             axios.get(`http://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${STEAM_API_KEY}&steamid=${id}&format=json&include_played_free_games=1`)
         );
@@ -145,7 +146,6 @@ app.get('/api/shared-games', async (req, res) => {
 
         const gameDetailsPromises = partiallyMatchedGames.slice(0, 30).map(async (game) => {
             try {
-                // Add the 'cc' parameter to the Steam store API call
                 const detailsRes = await axios.get(`https://store.steampowered.com/api/appdetails?appids=${game.appid}&cc=${cc || 'au'}`);
                 const details = detailsRes.data[game.appid];
 
@@ -173,6 +173,65 @@ app.get('/api/shared-games', async (req, res) => {
 
     } catch (error) {
         console.error('Error fetching shared games:', error.message);
+        res.status(500).json({ games: [] });
+    }
+});
+
+// --- NEW ENDPOINT FOR MANUAL GAME SEARCH ---
+app.get('/api/search-game', async (req, res) => {
+    const { query, steamids, cc } = req.query;
+    if (!query || !steamids) return res.status(400).json({ error: 'Query and SteamIDs are required' });
+
+    const ids = steamids.split(',');
+
+    try {
+        // This is a workaround as Steam doesn't have a direct name search API.
+        // We'll search a public list of all Steam apps.
+        const appListRes = await axios.get('https://api.steampowered.com/ISteamApps/GetAppList/v2/');
+        const potentialApps = appListRes.data.applist.apps.filter(app => 
+            app.name.toLowerCase().includes(query.toLowerCase())
+        ).slice(0, 5); // Limit to 5 potential matches to avoid long loads
+
+        if (potentialApps.length === 0) {
+            return res.json({ games: [] });
+        }
+
+        // Fetch ownership for all users for these specific games
+        const allGamesPromises = ids.map(id =>
+            axios.get(`http://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${STEAM_API_KEY}&steamid=${id}&format=json&include_played_free_games=1`)
+        );
+        const userLibraries = await Promise.all(allGamesPromises);
+        const userGamesSets = userLibraries.map(lib => new Set(lib.data.response.games.map(g => g.appid)));
+
+        const gameDetailsPromises = potentialApps.map(async (app) => {
+            try {
+                const detailsRes = await axios.get(`https://store.steampowered.com/api/appdetails?appids=${app.appid}&cc=${cc || 'au'}`);
+                const details = detailsRes.data[app.appid];
+
+                if (details && details.success) {
+                    const owners = ids.filter((id, index) => userGamesSets[index].has(app.appid));
+                    const nonOwners = ids.filter(id => !owners.includes(id));
+                    
+                    const playersRes = await axios.get(`https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid=${app.appid}`);
+
+                    return {
+                        ...details.data,
+                        player_count: playersRes.data.response.player_count || 0,
+                        owners,
+                        nonOwners
+                    };
+                }
+                return null;
+            } catch (e) {
+                return null;
+            }
+        });
+
+        const finalGames = (await Promise.all(gameDetailsPromises)).filter(Boolean);
+        res.json({ games: finalGames });
+
+    } catch (error) {
+        console.error('Error searching for game:', error.message);
         res.status(500).json({ games: [] });
     }
 });
